@@ -1,0 +1,27 @@
+.hello-world-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.hello-world-text {
+  font-size: 3rem;
+  font-weight: bold;
+  color: #ffffff;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 768px) {
+  .hello-world-text {
+    font-size: 2rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .hello-world-text {
+    font-size: 1.5rem;
+  }
+}

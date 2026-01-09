@@ -1,19 +1,19 @@
 {
-  "project_name": "" ,
-  "owner": "" ,
-  "stack_type": "",
+  "project_name": "import-template-test2",
+  "owner": "archer-test",
+  "stack_type": "fullstack",
   "frontend": {
-    "provider": "",
-    "framework": "",
-    "language": ""
+    "provider": "vercel",
+    "framework": "nextjs",
+    "language": "typescript"
   },
   "backend": {
-    "provider": "",
-    "language": "",
-    "framework": ""
+    "provider": "supabase",
+    "language": "typescript",
+    "framework": "supabase"
   },
   "database": {
-    "provider": "",
-    "type": ""
+    "provider": "supabase",
+    "type": "postgresql"
   }
 }
