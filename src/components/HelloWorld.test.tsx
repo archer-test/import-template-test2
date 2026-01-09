@@ -24,4 +24,10 @@ describe('HelloWorld Component', () => {
     const container = screen.getByTestId('hello-world-container')
     expect(container).toHaveClass('hello-world-container')
   })
+
+  it('uses green theme styling', () => {
+    render(<HelloWorld />)
+    const container = screen.getByTestId('hello-world-container')
+    expect(container).toHaveAttribute('data-theme', 'green')
+  })
 })

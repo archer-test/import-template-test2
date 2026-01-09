@@ -25,6 +25,13 @@ A Hello World application with a global visit counter, built with Next.js and Su
 - High contrast mode support for accessibility
 - Reduced motion support for users with motion sensitivity
 
+### Green Theme & Enhanced Readability (Doc 031)
+- Updated background to a refreshing green gradient (`#a8d5ba` to `#2d8659`)
+- Increased font sizes for improved readability:
+  - Base font: 18px (up from browser default 16px)
+  - Hello World heading: 4rem desktop, 2.5rem tablet, 2rem mobile
+- Color scheme meets WCAG 2.1 Level AA contrast requirements
+
 ## Tech Stack
 
 | Layer | Technology | Rationale |
