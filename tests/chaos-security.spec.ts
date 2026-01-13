@@ -107,7 +107,7 @@ test.describe('Chaos & Security Suite', () => {
     // 1. Click the first available link to go somewhere else
     const firstLink = page.locator('a[href]').first();
     if (await firstLink.isVisible()) {
-      await firstLink.click();
+      await firstLink.click({ force: true });
       await page.waitForLoadState('domcontentloaded');
     }
 

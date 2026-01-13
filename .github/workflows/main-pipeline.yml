@@ -191,6 +191,7 @@ jobs:
         env:
           # The dynamic URL from Job 2
           BASE_URL: ${{ needs.deploy-testing.outputs.testing_url }}
+          HOME: /root
           # The keys from Job 1 (if tests need to hit DB directly)
           NEXT_PUBLIC_SUPABASE_URL: ${{ needs.provision-stack.outputs.sb_url }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ needs.provision-stack.outputs.sb_anon }}
