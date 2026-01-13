@@ -302,5 +302,6 @@ After generating scripts:
 - Print their paths and intended usage
 - Stop and wait (do NOT deploy yet)
 
+NEVER RUN DEPLOYMENT SCRIPTS AFTER CREATION
 
 FOR EVERY FEATURE AND CODE GENERATED, edit README.md file in root directory to include key feature updates, including rationale for methodologies used.

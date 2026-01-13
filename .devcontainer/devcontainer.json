@@ -5,13 +5,16 @@
     "ghcr.io/devcontainers/features/node:1": {},
     "ghcr.io/devcontainers/features/git:1": {}
   },
-  "postCreateCommand": "curl -fsSL https://claude.ai/install.sh | bash",
+  
+  "postCreateCommand": "curl -fsSL https://claude.ai/install.sh | bash && if [ ! -f package.json ]; then npm init -y && npm install -D @playwright/test; else npm install; fi && npx playwright install --with-deps",
+  
   "customizations": {
     "vscode": {
       "extensions": [
         "ms-vscode.vscode-json",
         "ms-vscode.vscode-yaml",
-        "GitHub.copilot-chat"
+        "GitHub.copilot-chat",
+        "ms-playwright.playwright"
       ]
     }
   }

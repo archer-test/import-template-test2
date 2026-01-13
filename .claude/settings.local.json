@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest:*)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run test:run:*)",
+      "Bash(chmod:*)",
+      "Bash(npm run build:*)",
+      "Bash(./scripts/deploy-backend-supabase.sh:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(./scripts/deploy-frontend-vercel.sh:*)",
+      "Bash(vercel deploy:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git pull:*)",
+      "Bash(git fetch:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}
