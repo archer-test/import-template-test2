@@ -1,13 +1,11 @@
 {
-  "name": "Claude Ready Dev Container",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "name": "Claude + Playwright (Fixed)",
+  "image": "mcr.microsoft.com/playwright:v1.48.0-jammy",
   "features": {
-    "ghcr.io/devcontainers/features/node:1": {},
     "ghcr.io/devcontainers/features/git:1": {}
   },
-  
-  "postCreateCommand": "curl -fsSL https://claude.ai/install.sh | bash && if [ ! -f package.json ]; then npm init -y && npm install -D @playwright/test; else npm install; fi && npx playwright install --with-deps",
-  
+  "remoteUser": "root",
+  "updateContentCommand": "echo 'Starting Install...' > install.log && npm install -g @anthropic-ai/claude-code >> install.log 2>&1 && (ls package.json || npm init -y) >> install.log 2>&1 && npm install -D @playwright/test >> install.log 2>&1 && echo 'Done!' >> install.log",
   "customizations": {
     "vscode": {
       "extensions": [

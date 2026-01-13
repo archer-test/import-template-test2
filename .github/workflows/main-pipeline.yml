@@ -31,8 +31,8 @@ jobs:
       - name: Parse stack.json
         id: parse
         run: |
-          PROVIDER=$(jq -r '.frontend.provider' stack.json)
-          PROJECT=$(jq -r '.project_name' stack.json)
+          PROVIDER=$(jq -r '.frontend.provider' setup/stack.json)
+          PROJECT=$(jq -r '.project_name' setup/stack.json)
           echo "Detected Provider: $PROVIDER"
           echo "Detected Project: $PROJECT"
           echo "fe_provider=$PROVIDER" >> $GITHUB_OUTPUT
