@@ -43,8 +43,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          chmod +x scripts/deploy-backend.sh
-          ./scripts/deploy-backend.sh
+          chmod +x scripts/deploy-backend-supabase.sh
+          ./scripts/deploy-backend-supabase.sh
 
       - name: Extract Supabase Keys from .env
         id: extract-keys
