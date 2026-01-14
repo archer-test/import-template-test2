@@ -107,17 +107,25 @@ jobs:
           path: .
 
       # 3. APPEND keys to .env.local (Refilling what 'pull' might have deleted)
+      # 3. Clean and Inject Keys (The Fix)
       - name: Inject Keys
         id: inject-keys
         run: |
-          echo "" >> .env.local # Ensure newline
-          cat .env >> .env.local # Add our keys to the file Vercel just made
+          echo "🧹 Cleaning invisible characters from .env..."
           
-          # Load keys for the CLI steps below
+          # 1. Create a clean file by removing '\r' (Windows line endings)
+          tr -d '\r' < .env > .env.clean
+          
+          # 2. Append the CLEAN keys to .env.local
+          echo "" >> .env.local
+          cat .env.clean >> .env.local
+          
+          # 3. Load the CLEAN keys for the CLI steps
           set -a
-          source .env
+          source .env.clean
           set +a
           
+          # 4. Output them to GitHub (for the next steps)
           echo "sb_url=$NEXT_PUBLIC_SUPABASE_URL" >> $GITHUB_OUTPUT
           echo "sb_anon=$NEXT_PUBLIC_SUPABASE_ANON_KEY" >> $GITHUB_OUTPUT
 
