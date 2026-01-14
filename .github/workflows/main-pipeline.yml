@@ -87,19 +87,23 @@ jobs:
         if: ${{ needs.provision-stack.outputs.fe_provider == 'vercel' }}
         run: npm install --global vercel@latest
 
-      - name: Sync Env Vars to Vercel (The Fix)
+      - name: Vercel Setup, Sync & Deploy (Preview)
         if: ${{ needs.provision-stack.outputs.fe_provider == 'vercel' }}
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.PROJECT_ID }}
-          # Map the Supabase outputs
+          PROJECT_NAME: ${{ needs.provision-stack.outputs.project_name }}
+          # Map Supabase outputs
           SB_URL: ${{ needs.provision-stack.outputs.sb_url }}
           SB_ANON: ${{ needs.provision-stack.outputs.sb_anon }}
         run: |
-          # Function to safely add/update a variable
-          # 1. Try to remove it first (ignoring errors if it doesn't exist)
-          # 2. Add it fresh
+          # 1. Link Project (MUST BE FIRST)
+          # This connects the folder to the Vercel cloud project
+          vercel link --yes --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --project=$PROJECT_NAME
+
+          # 2. Sync Environment Variables
+          # Now that we are linked, we can safely upload keys
           
           update_var() {
             key=$1
@@ -107,35 +111,24 @@ jobs:
             targets=("production" "preview" "development")
             
             for target in "${targets[@]}"; do
-              echo "Syncing $key to $target..."
-              # Remove existing (suppress error if missing)
+              # Try to remove old var to avoid duplicates (ignore errors)
               vercel env rm $key $target --token=$VERCEL_TOKEN --yes || true
-              # Add new value (piped from echo to avoid interactive prompt)
+              # Add new value
               echo -n "$val" | vercel env add $key $target --token=$VERCEL_TOKEN
             done
           }
 
-          # Run the function for both keys
+          echo "Syncing Supabase Keys to Vercel..."
           update_var "NEXT_PUBLIC_SUPABASE_URL" "$SB_URL"
           update_var "NEXT_PUBLIC_SUPABASE_ANON_KEY" "$SB_ANON"
 
-      - name: Vercel Build & Deploy (Preview)
-        if: ${{ needs.provision-stack.outputs.fe_provider == 'vercel' }}
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.PROJECT_ID }}
-          PROJECT_NAME: ${{ needs.provision-stack.outputs.project_name }}
-        run: |
-          vercel link --yes --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --project=$PROJECT_NAME
-          
-          # Now that we uploaded the vars, 'pull' will download them correctly!
+          # 3. Pull Config (Downloads the keys we just uploaded!)
           vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
-          
-          # Build (Now guarantees keys are present)
+
+          # 4. Build (Bakes the keys into the app)
           vercel build --token=$VERCEL_TOKEN
-          
-          # Deploy
+
+          # 5. Deploy
           vercel deploy --prebuilt --token=$VERCEL_TOKEN > deployment-url.txt
           
           echo "preview-url=$(cat deployment-url.txt)" >> $GITHUB_OUTPUT
