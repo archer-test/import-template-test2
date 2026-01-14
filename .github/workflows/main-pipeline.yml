@@ -90,32 +90,30 @@ jobs:
       - name: Vercel Build & Deploy (Preview)
         if: ${{ needs.provision-stack.outputs.fe_provider == 'vercel' }}
         id: vercel-deploy
+        # 1. DEFINE VARIABLES HERE (Vercel CLI reads these automatically)
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.PROJECT_ID }}
           PROJECT_NAME: ${{ needs.provision-stack.outputs.project_name }}
-          # Map outputs to Shell Variables
+          # These will be baked into the app during 'vercel build'
           NEXT_PUBLIC_SUPABASE_URL: ${{ needs.provision-stack.outputs.sb_url }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ needs.provision-stack.outputs.sb_anon }}
         run: |
-          # 1. Link Project (Creates it if missing)
+          # 1. Link Project
           vercel link --yes --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --project=$PROJECT_NAME
 
-          # 2. Pull Config (Get Vercel settings)
+          # 2. Pull Config (Downloads settings to .vercel/)
           vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
 
-          # 3. Build Project Artifacts (injects env vars into the frontend code)
-          vercel build --token=$VERCEL_TOKEN \
-            --env NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
-            --env NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+          # 3. Build Project Artifacts
+          # We removed the invalid '--env' flags. 
+          # The CLI now reads the variables defined in the 'env:' section above.
+          vercel build --token=$VERCEL_TOKEN
 
-          # 4. Deploy Prebuilt Artifacts (uploads the result)
-          # We pass flags here too to ensure server-side functions can read them
-          vercel deploy --prebuilt --token=$VERCEL_TOKEN \
-            --env NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
-            --env NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
-            > deployment-url.txt
+          # 4. Deploy Prebuilt Artifacts
+          # 'deploy' also reads the shell env vars if needed, but mainly uploads the build.
+          vercel deploy --prebuilt --token=$VERCEL_TOKEN > deployment-url.txt
           
           echo "preview-url=$(cat deployment-url.txt)" >> $GITHUB_OUTPUT
 
