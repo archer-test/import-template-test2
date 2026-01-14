@@ -32,8 +32,6 @@ jobs:
         run: |
           PROVIDER=$(jq -r '.frontend.provider' setup/stack.json)
           PROJECT=$(jq -r '.project_name' setup/stack.json)
-          echo "Detected Provider: $PROVIDER"
-          echo "Detected Project: $PROJECT"
           echo "fe_provider=$PROVIDER" >> $GITHUB_OUTPUT
           echo "project_name=$PROJECT" >> $GITHUB_OUTPUT
 
@@ -45,12 +43,33 @@ jobs:
           chmod +x scripts/deploy-backend-supabase.sh
           ./scripts/deploy-backend-supabase.sh
 
-      # --- NEW STEP: Upload the file instead of reading it ---
+      # --- FIX: FIND AND MOVE THE .ENV FILE ---
+      - name: Locate and Move .env
+        run: |
+          echo "🔍 Searching for .env file..."
+          # Find .env file (ignoring node_modules)
+          FOUND_PATH=$(find . -name ".env" -not -path "*/node_modules/*" | head -n 1)
+          
+          if [ -z "$FOUND_PATH" ]; then
+            echo "::error::❌ Could not find .env file anywhere!"
+            exit 1
+          fi
+
+          echo "✅ Found .env at: $FOUND_PATH"
+          
+          # If it's not already in the root, move it here
+          if [ "$FOUND_PATH" != "./.env" ]; then
+            echo "📦 Moving $FOUND_PATH to root..."
+            mv "$FOUND_PATH" .env
+          fi
+
+      # --- UPLOAD STEP (Now guaranteed to work) ---
       - name: Upload .env as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: supabase-env
           path: .env
+          include-hidden-files: true
           retention-days: 1
 
   # ====================================================
