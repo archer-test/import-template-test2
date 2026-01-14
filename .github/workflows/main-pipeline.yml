@@ -108,24 +108,36 @@ jobs:
 
       # 3. APPEND keys to .env.local (Refilling what 'pull' might have deleted)
       # 3. Clean and Inject Keys (The Fix)
+      # 3. Clean and Inject Keys (The "Nuclear" Fix)
       - name: Inject Keys
         id: inject-keys
         run: |
           echo "🧹 Cleaning invisible characters from .env..."
-          
-          # 1. Create a clean file by removing '\r' (Windows line endings)
           tr -d '\r' < .env > .env.clean
           
-          # 2. Append the CLEAN keys to .env.local
-          echo "" >> .env.local
-          cat .env.clean >> .env.local
-          
-          # 3. Load the CLEAN keys for the CLI steps
+          # Load keys so we can output them to GitHub
           set -a
           source .env.clean
           set +a
           
-          # 4. Output them to GitHub (for the next steps)
+          # --- THE FIX IS HERE ---
+          # 1. Prepare the content we want to inject
+          KEYS_CONTENT=$(cat .env.clean)
+          
+          # 2. Append to Root .env.local (Standard Next.js)
+          echo "" >> .env.local
+          echo "$KEYS_CONTENT" >> .env.local
+          
+          # 3. Append to Vercel's Hidden Priority File (CRITICAL)
+          # Vercel pull creates this, and it overrides everything else.
+          # We append our keys to the bottom so they "win".
+          if [ -f .vercel/.env.preview.local ]; then
+             echo "Found Vercel priority file. Overwriting keys..."
+             echo "" >> .vercel/.env.preview.local
+             echo "$KEYS_CONTENT" >> .vercel/.env.preview.local
+          fi
+
+          # 4. Output to GitHub for the CLI steps
           echo "sb_url=$NEXT_PUBLIC_SUPABASE_URL" >> $GITHUB_OUTPUT
           echo "sb_anon=$NEXT_PUBLIC_SUPABASE_ANON_KEY" >> $GITHUB_OUTPUT
 
