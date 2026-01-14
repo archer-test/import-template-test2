@@ -103,23 +103,28 @@ jobs:
           # 1. Link Project
           vercel link --yes --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --project=$PROJECT_NAME
 
-          # 2. Force Create .env.local (This Fixes "Visit Count")
-          # We manually write the file so the build 100% sees the keys.
+          # 2. Force Create .env.local (Keeps frontend working)
           echo "NEXT_PUBLIC_SUPABASE_URL=$SB_URL" >> .env.local
           echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$SB_ANON" >> .env.local
 
-          # 3. Sync Keys to Vercel Cloud (Fixes API Routes)
-          # We also upload them so the backend works.
-          echo -n "$SB_URL" | vercel env add NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN || true
-          echo -n "$SB_ANON" | vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN || true
+          # 3. Sync Keys to Vercel Cloud (Fixes "Mark as sensitive?" crash)
+          # We use printf to send: [VALUE] + [Enter] + [n] + [Enter]
+          
+          # Sync URL
+          # Remove old one first to avoid duplicates (ignoring errors)
+          vercel env rm NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN --yes || true
+          printf "%s\nn\n" "$SB_URL" | vercel env add NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN
 
-          # 4. Build (Uses the .env.local file we just made)
+          # Sync Anon Key
+          vercel env rm NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN --yes || true
+          printf "%s\nn\n" "$SB_ANON" | vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN
+
+          # 4. Build
           vercel build --token=$VERCEL_TOKEN
 
           # 5. Deploy & Capture URL
           vercel deploy --prebuilt --token=$VERCEL_TOKEN > deployment-url.txt
           
-          # Clean the URL (remove extra spaces) and save it
           URL=$(cat deployment-url.txt)
           echo "preview_url=$URL" >> $GITHUB_OUTPUT
 
