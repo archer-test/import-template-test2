@@ -103,32 +103,25 @@ jobs:
           # 1. Link Project
           vercel link --yes --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --project=$PROJECT_NAME
 
-          # 2. CLEANUP: Delete the repository's .env file (The Saboteur)
-          # We remove .env so it cannot conflict with our correct keys.
-          rm -f .env
-
-          # 3. Pull Settings (Required for project.json)
+          # 2. Pull Settings (Required for project structure)
           vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
 
-          # 4. Create a FRESH .env.local
-          # We use '>' (overwrite) instead of '>>' (append) to ensure the file is clean.
-          echo "NEXT_PUBLIC_SUPABASE_URL=$SB_URL" > .env.local
-          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$SB_ANON" >> .env.local
-
-          # 5. Sync Keys to Vercel Cloud (Backend)
-          
-          # Sync URL
+          # 3. Sync Keys to Vercel Cloud (Required for the backend to work later)
+          # (We keep this so the API works after deployment)
           vercel env rm NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN --yes || true
           printf "%s\nn\n" "$SB_URL" | vercel env add NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN
 
-          # Sync Anon Key
           vercel env rm NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN --yes || true
           printf "%s\nn\n" "$SB_ANON" | vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN
 
-          # 6. Build
-          vercel build --token=$VERCEL_TOKEN
+          # 4. Build with FORCED Environment Variables
+          # We use --build-env to inject keys directly into the build process.
+          # This ignores any empty/bad .env files on disk.
+          vercel build --token=$VERCEL_TOKEN \
+            --build-env NEXT_PUBLIC_SUPABASE_URL="$SB_URL" \
+            --build-env NEXT_PUBLIC_SUPABASE_ANON_KEY="$SB_ANON"
 
-          # 7. Deploy & Capture URL
+          # 5. Deploy
           vercel deploy --prebuilt --token=$VERCEL_TOKEN > deployment-url.txt
           
           URL=$(cat deployment-url.txt)
