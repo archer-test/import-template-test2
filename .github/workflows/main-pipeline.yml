@@ -21,9 +21,8 @@ jobs:
     outputs:
       fe_provider: ${{ steps.parse.outputs.fe_provider }}
       project_name: ${{ steps.parse.outputs.project_name }}
-      sb_url: ${{ steps.extract-keys.outputs.sb_url }}
-      sb_anon: ${{ steps.extract-keys.outputs.sb_anon }}
-    
+      # NOTE: sb_url and sb_anon are REMOVED. We use the artifact instead.
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -46,37 +45,13 @@ jobs:
           chmod +x scripts/deploy-backend-supabase.sh
           ./scripts/deploy-backend-supabase.sh
 
-      - name: Extract Supabase Keys from .env
-        id: extract-keys
-        run: |
-          echo "🔍 DEBUG: Checking .env content..."
-          # Print the file safely (masking values) just to see structure
-          sed 's/=.*/=********/' .env
-
-          # 1. Use AWK for Robust Extraction
-          # Finds the line, splits by '=', takes the 2nd part, strips quotes & whitespace
-          URL=$(awk -F '=' '/NEXT_PUBLIC_SUPABASE_URL/ {print $2}' .env | tr -d ' "\r\n')
-          ANON=$(awk -F '=' '/NEXT_PUBLIC_SUPABASE_ANON_KEY/ {print $2}' .env | tr -d ' "\r\n')
-
-          # 2. Check if Empty
-          if [ -z "$URL" ]; then
-            echo "::error::❌ AWK extraction returned empty! Check .env format above."
-            exit 1
-          fi
-
-          # 3. Write to GitHub Output
-          echo "sb_url=$URL" >> $GITHUB_OUTPUT
-          echo "sb_anon=$ANON" >> $GITHUB_OUTPUT
-
-          # 4. CRITICAL DEBUG: Prove it was written
-          echo "🔍 DEBUG: verifying GITHUB_OUTPUT file content..."
-          cat $GITHUB_OUTPUT
-
-          # 5. Mask Secrets (Do this LAST so we can see the file structure above)
-          echo "::add-mask::$URL"
-          echo "::add-mask::$ANON"
-          
-          echo "✅ Extraction Complete. URL Length: ${#URL}"
+      # --- NEW STEP: Upload the file instead of reading it ---
+      - name: Upload .env as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-env
+          path: .env
+          retention-days: 1
 
   # ====================================================
   # JOB 2: DEPLOY TO TESTING (Green Env)
@@ -85,87 +60,63 @@ jobs:
     name: Deploy to Testing
     needs: provision-stack
     runs-on: ubuntu-latest
-    environment: testing
-    # 1. OUTPUT THE URL SO THE NEXT JOB CAN USE IT
-    outputs:
-      preview_url: ${{ steps.vercel.outputs.preview_url }}
-    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-      
-      - name: Debug Inputs
-        run: |
-          echo "🔍 Checking Inputs from Previous Job..."
-          echo "Raw Output (sb_url): ${{ needs.provision-stack.outputs.sb_url }}"
-          
-          # Check if it's empty string
-          if [ -z "${{ needs.provision-stack.outputs.sb_url }}" ]; then
-            echo "::error::❌ GitHub says the output is EMPTY."
-          else
-            echo "✅ GitHub sees the output (it might be *** masked, that is good)"
-          fi
 
-      # ---------------------------------------------------------
-      # PATH A: VERCEL (Provision & Deploy)
-      # ---------------------------------------------------------
+      # 1. DOWNLOAD THE KEYS (Bypasses the "Empty Output" bug)
+      - name: Download Env Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: supabase-env
+          path: .
+
+      # 2. Rename and Load Keys
+      - name: Prepare Environment
+        id: load-env
+        run: |
+          # Rename to .env.local so Next.js finds it automatically
+          mv .env .env.local
+          
+          # Load keys into Shell Variables (for the Vercel commands below)
+          set -a
+          source .env.local
+          set +a
+          
+          # Output them to this step (safely) so we can use them in the next step
+          echo "sb_url=$NEXT_PUBLIC_SUPABASE_URL" >> $GITHUB_OUTPUT
+          echo "sb_anon=$NEXT_PUBLIC_SUPABASE_ANON_KEY" >> $GITHUB_OUTPUT
 
       - name: Install Vercel CLI
-        if: ${{ needs.provision-stack.outputs.fe_provider == 'vercel' }}
         run: npm install --global vercel@latest
 
       - name: Vercel Setup, Sync & Deploy
-        if: ${{ needs.provision-stack.outputs.fe_provider == 'vercel' }}
-        id: vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.PROJECT_ID }}
           PROJECT_NAME: ${{ needs.provision-stack.outputs.project_name }}
-          SB_URL: ${{ needs.provision-stack.outputs.sb_url }}
-          SB_ANON: ${{ needs.provision-stack.outputs.sb_anon }}
+          # READ KEYS FROM THE FILE WE JUST DOWNLOADED
+          SB_URL: ${{ steps.load-env.outputs.sb_url }}
+          SB_ANON: ${{ steps.load-env.outputs.sb_anon }}
         run: |
           # 1. Link Project
           vercel link --yes --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --project=$PROJECT_NAME
 
-          # 2. Pull Settings (Downloads project.json and the "bad" env files)
+          # 2. Pull Settings (Required for build)
           vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
 
-          # 3. DEBUG: Check if we actually have the keys
-          if [ -z "$SB_URL" ]; then
-            echo "ERROR: SB_URL is empty! Check provision-stack outputs."
-            exit 1
-          fi
-
-          # 4. THE FIX: Overwrite EVERY .env file found
-          # Vercel pull creates files in .vercel/ and root. We smash them all.
-          
-          echo "Overwriting all .env files with correct keys..."
-          
-          # Define the content we want
-          CONTENT="NEXT_PUBLIC_SUPABASE_URL=$SB_URL
-          NEXT_PUBLIC_SUPABASE_ANON_KEY=$SB_ANON"
-
-          # Overwrite root .env.local
-          echo "$CONTENT" > .env.local
-          
-          # Overwrite Vercel's internal env files (where the empty keys hide)
-          echo "$CONTENT" > .vercel/.env.preview.local
-          echo "$CONTENT" > .vercel/.env.production.local 2>/dev/null || true
-          echo "$CONTENT" > .vercel/.env.development.local 2>/dev/null || true
-
-          # 5. Sync Keys to Cloud (For Backend)
-          # We still need this for the live site API
+          # 3. Sync Keys to Cloud (Backend)
           vercel env rm NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN --yes || true
           printf "%s\nn\n" "$SB_URL" | vercel env add NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN
 
           vercel env rm NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN --yes || true
           printf "%s\nn\n" "$SB_ANON" | vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN
 
-          # 6. Build
+          # 4. Build (Next.js automatically reads the .env.local we downloaded!)
           vercel build --token=$VERCEL_TOKEN
 
-          # 7. Deploy
+          # 5. Deploy
           vercel deploy --prebuilt --token=$VERCEL_TOKEN > deployment-url.txt
           
           URL=$(cat deployment-url.txt)
