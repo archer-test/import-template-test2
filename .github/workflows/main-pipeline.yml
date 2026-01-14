@@ -49,47 +49,33 @@ jobs:
       - name: Extract Supabase Keys from .env
         id: extract-keys
         run: |
-          echo "🔍 DEBUG: Looking for .env file..."
-          ls -la 
+          echo "🔍 DEBUG: Raw .env content (Safe View)"
+          # Print file but replace values with STARS to see structure
+          sed 's/=.*/=********/' .env
 
-          # 1. Verify file existence
-          if [ ! -f .env ]; then
-            echo "::error::❌ CRITICAL: .env file NOT found in the root directory!"
-            exit 1
-          fi
+          # 1. Brute Force Extract (No 'source' command)
+          # Find line starting with KEY=, remove the key, remove quotes, remove \r
+          
+          URL=$(grep "NEXT_PUBLIC_SUPABASE_URL=" .env | cut -d '=' -f2- | sed 's/^"//' | sed 's/"$//' | tr -d '\r')
+          ANON=$(grep "NEXT_PUBLIC_SUPABASE_ANON_KEY=" .env | cut -d '=' -f2- | sed 's/^"//' | sed 's/"$//' | tr -d '\r')
 
-          # 2. Verify content exists
-          if ! grep -q "NEXT_PUBLIC_SUPABASE_URL" .env; then
-            echo "::error::❌ .env exists but does NOT contain NEXT_PUBLIC_SUPABASE_URL"
-            cat .env
-            exit 1
-          fi
-
-          # 3. Load variables safely
-          set -a
-          source .env
-          set +a
-
-          # 4. SANITIZATION (The Fix)
-          # Remove invisible carriage returns (\r) which break GitHub Outputs
-          CLEAN_URL=$(echo "$NEXT_PUBLIC_SUPABASE_URL" | tr -d '\r')
-          CLEAN_ANON=$(echo "$NEXT_PUBLIC_SUPABASE_ANON_KEY" | tr -d '\r')
-
-          # 5. Verify variables are loaded
-          if [ -z "$CLEAN_URL" ]; then
-             echo "::error::❌ Variable loaded as EMPTY."
+          # 2. Check if Extraction worked
+          if [ -z "$URL" ]; then
+             echo "::error::❌ Extraction failed. grep found nothing."
              exit 1
           fi
 
-          # 6. Mask and Output
-          echo "::add-mask::$CLEAN_URL"
-          echo "::add-mask::$CLEAN_ANON"
+          # 3. Masking (CRITICAL: Do this AFTER extraction)
+          echo "::add-mask::$URL"
+          echo "::add-mask::$ANON"
+
+          # 4. Output to GitHub
+          echo "sb_url=$URL" >> $GITHUB_OUTPUT
+          echo "sb_anon=$ANON" >> $GITHUB_OUTPUT
           
-          # Use the CLEAN variables here
-          echo "sb_url=$CLEAN_URL" >> $GITHUB_OUTPUT
-          echo "sb_anon=$CLEAN_ANON" >> $GITHUB_OUTPUT
-          
-          echo "✅ SUCCESS: Keys extracted and pushed to outputs."
+          echo "✅ KEYS EXTRACTED:"
+          echo "URL length: ${#URL}"
+          echo "Anon length: ${#ANON}"
 
   # ====================================================
   # JOB 2: DEPLOY TO TESTING (Green Env)
@@ -106,6 +92,18 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+      
+      - name: Debug Inputs
+        run: |
+          echo "🔍 Checking Inputs from Previous Job..."
+          echo "Raw Output (sb_url): ${{ needs.provision-stack.outputs.sb_url }}"
+          
+          # Check if it's empty string
+          if [ -z "${{ needs.provision-stack.outputs.sb_url }}" ]; then
+            echo "::error::❌ GitHub says the output is EMPTY."
+          else
+            echo "✅ GitHub sees the output (it might be *** masked, that is good)"
+          fi
 
       # ---------------------------------------------------------
       # PATH A: VERCEL (Provision & Deploy)
