@@ -100,39 +100,28 @@ jobs:
           SB_URL: ${{ needs.provision-stack.outputs.sb_url }}
           SB_ANON: ${{ needs.provision-stack.outputs.sb_anon }}
         run: |
-          # 1. Link Project (Connects to Vercel)
+          # 1. Link Project
           vercel link --yes --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --project=$PROJECT_NAME
 
-          # 2. Pull Config IMMEDIATELY (Fixes "No Project Settings" error)
-          # We do this first to ensure project.json exists before we mess with anything else.
+          # 2. Pull Settings (Needed for project.json)
           vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
 
-          # 3. Manually Inject Keys for the Build (Frontend)
-          # We append the keys directly to the file Vercel just downloaded.
-          # This guarantees 'vercel build' sees them.
-          echo "NEXT_PUBLIC_SUPABASE_URL=$SB_URL" >> .vercel/.env.preview.local
-          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$SB_ANON" >> .vercel/.env.preview.local
-
-          # 4. Sync Keys to Vercel Cloud (Backend / API Routes)
-          # We still need to upload them so the live server knows them.
+          # 3. Sync Keys to Vercel Cloud (Fixes API / Backend)
+          # We update the cloud so the server-side works
           
-          # Function to upload safely
-          sync_var() {
-            key=$1
-            val=$2
-            # Remove old variable (ignore errors)
-            vercel env rm $key preview --token=$VERCEL_TOKEN --yes || true
-            # Add new variable (using printf to answer prompts automatically)
-            printf "%s\nn\n" "$val" | vercel env add $key preview --token=$VERCEL_TOKEN
-          }
+          # Sync URL
+          vercel env rm NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN --yes || true
+          printf "%s\nn\n" "$SB_URL" | vercel env add NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN
 
-          sync_var "NEXT_PUBLIC_SUPABASE_URL" "$SB_URL"
-          sync_var "NEXT_PUBLIC_SUPABASE_ANON_KEY" "$SB_ANON"
+          # Sync Anon Key
+          vercel env rm NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN --yes || true
+          printf "%s\nn\n" "$SB_ANON" | vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN
 
-          # 5. Build
-          vercel build --token=$VERCEL_TOKEN
+          # 4. Build with Explicit Variables (Fixes Frontend / Console Error)
+          # We pass the variables directly before the command. This bypasses file issues.
+          NEXT_PUBLIC_SUPABASE_URL=$SB_URL NEXT_PUBLIC_SUPABASE_ANON_KEY=$SB_ANON vercel build --token=$VERCEL_TOKEN
 
-          # 6. Deploy & Capture URL
+          # 5. Deploy
           vercel deploy --prebuilt --token=$VERCEL_TOKEN > deployment-url.txt
           
           URL=$(cat deployment-url.txt)
