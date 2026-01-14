@@ -83,59 +83,62 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. DOWNLOAD THE KEYS (Bypasses the "Empty Output" bug)
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      # 1. Link & Pull FIRST (Let this run before we touch .env files)
+      - name: Vercel Link & Pull
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.PROJECT_ID }}
+          PROJECT_NAME: ${{ needs.provision-stack.outputs.project_name }}
+        run: |
+          vercel link --yes --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --project=$PROJECT_NAME
+          
+          # This command creates .env.local and deletes our keys if we added them too early
+          vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
+
+      # 2. Download the keys from Job 1
       - name: Download Env Artifact
         uses: actions/download-artifact@v4
         with:
           name: supabase-env
           path: .
 
-      # 2. Rename and Load Keys
-      - name: Prepare Environment
-        id: load-env
+      # 3. APPEND keys to .env.local (Refilling what 'pull' might have deleted)
+      - name: Inject Keys
+        id: inject-keys
         run: |
-          # Rename to .env.local so Next.js finds it automatically
-          mv .env .env.local
+          echo "" >> .env.local # Ensure newline
+          cat .env >> .env.local # Add our keys to the file Vercel just made
           
-          # Load keys into Shell Variables (for the Vercel commands below)
+          # Load keys for the CLI steps below
           set -a
-          source .env.local
+          source .env
           set +a
           
-          # Output them to this step (safely) so we can use them in the next step
           echo "sb_url=$NEXT_PUBLIC_SUPABASE_URL" >> $GITHUB_OUTPUT
           echo "sb_anon=$NEXT_PUBLIC_SUPABASE_ANON_KEY" >> $GITHUB_OUTPUT
 
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
-      - name: Vercel Setup, Sync & Deploy
+      # 4. Sync, Build & Deploy
+      - name: Vercel Build & Deploy
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.PROJECT_ID }}
-          PROJECT_NAME: ${{ needs.provision-stack.outputs.project_name }}
-          # READ KEYS FROM THE FILE WE JUST DOWNLOADED
-          SB_URL: ${{ steps.load-env.outputs.sb_url }}
-          SB_ANON: ${{ steps.load-env.outputs.sb_anon }}
+          SB_URL: ${{ steps.inject-keys.outputs.sb_url }}
+          SB_ANON: ${{ steps.inject-keys.outputs.sb_anon }}
         run: |
-          # 1. Link Project
-          vercel link --yes --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --project=$PROJECT_NAME
-
-          # 2. Pull Settings (Required for build)
-          vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
-
-          # 3. Sync Keys to Cloud (Backend)
+          # Sync to Cloud (so API routes work)
           vercel env rm NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN --yes || true
           printf "%s\nn\n" "$SB_URL" | vercel env add NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN
 
           vercel env rm NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN --yes || true
           printf "%s\nn\n" "$SB_ANON" | vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN
 
-          # 4. Build (Next.js automatically reads the .env.local we downloaded!)
+          # Build (Now finds the keys in .env.local because we added them LAST)
           vercel build --token=$VERCEL_TOKEN
 
-          # 5. Deploy
+          # Deploy
           vercel deploy --prebuilt --token=$VERCEL_TOKEN > deployment-url.txt
           
           URL=$(cat deployment-url.txt)
