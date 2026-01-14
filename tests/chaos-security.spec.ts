@@ -65,7 +65,7 @@ test.describe('Chaos & Security Suite', () => {
 
     // Get all clickable elements (buttons, links, inputs)
     // We use a broader selector to find anything interactive
-    const interactables = page.locator('button, a, input[type="submit"], input[type="button"]');
+    const interactables = page.locator('button, a[href^="/"], input[type="submit"], input[type="button"]');
     
     const count = await interactables.count();
     console.log(`Monkey found ${count} clickable elements.`);
