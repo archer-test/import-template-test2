@@ -73,8 +73,9 @@ jobs:
     needs: provision-stack
     runs-on: ubuntu-latest
     environment: testing
+    # 1. OUTPUT THE URL SO THE NEXT JOB CAN USE IT
     outputs:
-      testing_url: ${{ steps.set-url.outputs.url }}
+      preview_url: ${{ steps.vercel.outputs.preview_url }}
     
     steps:
       - name: Checkout Code
@@ -83,55 +84,44 @@ jobs:
       # ---------------------------------------------------------
       # PATH A: VERCEL (Provision & Deploy)
       # ---------------------------------------------------------
+
       - name: Install Vercel CLI
         if: ${{ needs.provision-stack.outputs.fe_provider == 'vercel' }}
         run: npm install --global vercel@latest
 
-      - name: Vercel Setup, Sync & Deploy (Preview)
+      - name: Vercel Setup, Sync & Deploy
         if: ${{ needs.provision-stack.outputs.fe_provider == 'vercel' }}
+        id: vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.PROJECT_ID }}
           PROJECT_NAME: ${{ needs.provision-stack.outputs.project_name }}
-          # Map Supabase outputs
           SB_URL: ${{ needs.provision-stack.outputs.sb_url }}
           SB_ANON: ${{ needs.provision-stack.outputs.sb_anon }}
         run: |
-          # 1. Link Project (MUST BE FIRST)
-          # This connects the folder to the Vercel cloud project
+          # 1. Link Project
           vercel link --yes --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --project=$PROJECT_NAME
 
-          # 2. Sync Environment Variables
-          # Now that we are linked, we can safely upload keys
-          
-          update_var() {
-            key=$1
-            val=$2
-            targets=("production" "preview" "development")
-            
-            for target in "${targets[@]}"; do
-              # Try to remove old var to avoid duplicates (ignore errors)
-              vercel env rm $key $target --token=$VERCEL_TOKEN --yes || true
-              # Add new value
-              echo -n "$val" | vercel env add $key $target --token=$VERCEL_TOKEN
-            done
-          }
+          # 2. Force Create .env.local (This Fixes "Visit Count")
+          # We manually write the file so the build 100% sees the keys.
+          echo "NEXT_PUBLIC_SUPABASE_URL=$SB_URL" >> .env.local
+          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$SB_ANON" >> .env.local
 
-          echo "Syncing Supabase Keys to Vercel..."
-          update_var "NEXT_PUBLIC_SUPABASE_URL" "$SB_URL"
-          update_var "NEXT_PUBLIC_SUPABASE_ANON_KEY" "$SB_ANON"
+          # 3. Sync Keys to Vercel Cloud (Fixes API Routes)
+          # We also upload them so the backend works.
+          echo -n "$SB_URL" | vercel env add NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN || true
+          echo -n "$SB_ANON" | vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN || true
 
-          # 3. Pull Config (Downloads the keys we just uploaded!)
-          vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
-
-          # 4. Build (Bakes the keys into the app)
+          # 4. Build (Uses the .env.local file we just made)
           vercel build --token=$VERCEL_TOKEN
 
-          # 5. Deploy
+          # 5. Deploy & Capture URL
           vercel deploy --prebuilt --token=$VERCEL_TOKEN > deployment-url.txt
           
-          echo "preview-url=$(cat deployment-url.txt)" >> $GITHUB_OUTPUT
+          # Clean the URL (remove extra spaces) and save it
+          URL=$(cat deployment-url.txt)
+          echo "preview_url=$URL" >> $GITHUB_OUTPUT
 
       # ---------------------------------------------------------
       # PATH B: AZURE (Provision & Deploy)
@@ -209,7 +199,7 @@ jobs:
       - name: Run Playwright
         env:
           # The dynamic URL from Job 2
-          BASE_URL: ${{ needs.deploy-testing.outputs.testing_url }}
+          BASE_URL: ${{ needs.deploy-testing.outputs.preview_url }}
           HOME: /root
           # The keys from Job 1 (if tests need to hit DB directly)
           NEXT_PUBLIC_SUPABASE_URL: ${{ needs.provision-stack.outputs.sb_url }}
