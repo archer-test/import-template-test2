@@ -103,25 +103,44 @@ jobs:
           # 1. Link Project
           vercel link --yes --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --project=$PROJECT_NAME
 
-          # 2. Pull Settings (Required for project structure)
+          # 2. Pull Settings (Downloads project.json and the "bad" env files)
           vercel pull --yes --environment=preview --token=$VERCEL_TOKEN
 
-          # 3. Sync Keys to Vercel Cloud (Required for the backend to work later)
-          # (We keep this so the API works after deployment)
+          # 3. DEBUG: Check if we actually have the keys
+          if [ -z "$SB_URL" ]; then
+            echo "ERROR: SB_URL is empty! Check provision-stack outputs."
+            exit 1
+          fi
+
+          # 4. THE FIX: Overwrite EVERY .env file found
+          # Vercel pull creates files in .vercel/ and root. We smash them all.
+          
+          echo "Overwriting all .env files with correct keys..."
+          
+          # Define the content we want
+          CONTENT="NEXT_PUBLIC_SUPABASE_URL=$SB_URL
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=$SB_ANON"
+
+          # Overwrite root .env.local
+          echo "$CONTENT" > .env.local
+          
+          # Overwrite Vercel's internal env files (where the empty keys hide)
+          echo "$CONTENT" > .vercel/.env.preview.local
+          echo "$CONTENT" > .vercel/.env.production.local 2>/dev/null || true
+          echo "$CONTENT" > .vercel/.env.development.local 2>/dev/null || true
+
+          # 5. Sync Keys to Cloud (For Backend)
+          # We still need this for the live site API
           vercel env rm NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN --yes || true
           printf "%s\nn\n" "$SB_URL" | vercel env add NEXT_PUBLIC_SUPABASE_URL preview --token=$VERCEL_TOKEN
 
           vercel env rm NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN --yes || true
           printf "%s\nn\n" "$SB_ANON" | vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=$VERCEL_TOKEN
 
-          # 4. Build with FORCED Environment Variables
-          # We use --build-env to inject keys directly into the build process.
-          # This ignores any empty/bad .env files on disk.
-          vercel build --token=$VERCEL_TOKEN \
-            --build-env NEXT_PUBLIC_SUPABASE_URL="$SB_URL" \
-            --build-env NEXT_PUBLIC_SUPABASE_ANON_KEY="$SB_ANON"
+          # 6. Build
+          vercel build --token=$VERCEL_TOKEN
 
-          # 5. Deploy
+          # 7. Deploy
           vercel deploy --prebuilt --token=$VERCEL_TOKEN > deployment-url.txt
           
           URL=$(cat deployment-url.txt)
