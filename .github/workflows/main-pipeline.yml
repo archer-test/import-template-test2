@@ -49,33 +49,34 @@ jobs:
       - name: Extract Supabase Keys from .env
         id: extract-keys
         run: |
-          echo "🔍 DEBUG: Raw .env content (Safe View)"
-          # Print file but replace values with STARS to see structure
+          echo "🔍 DEBUG: Checking .env content..."
+          # Print the file safely (masking values) just to see structure
           sed 's/=.*/=********/' .env
 
-          # 1. Brute Force Extract (No 'source' command)
-          # Find line starting with KEY=, remove the key, remove quotes, remove \r
-          
-          URL=$(grep "NEXT_PUBLIC_SUPABASE_URL=" .env | cut -d '=' -f2- | sed 's/^"//' | sed 's/"$//' | tr -d '\r')
-          ANON=$(grep "NEXT_PUBLIC_SUPABASE_ANON_KEY=" .env | cut -d '=' -f2- | sed 's/^"//' | sed 's/"$//' | tr -d '\r')
+          # 1. Use AWK for Robust Extraction
+          # Finds the line, splits by '=', takes the 2nd part, strips quotes & whitespace
+          URL=$(awk -F '=' '/NEXT_PUBLIC_SUPABASE_URL/ {print $2}' .env | tr -d ' "\r\n')
+          ANON=$(awk -F '=' '/NEXT_PUBLIC_SUPABASE_ANON_KEY/ {print $2}' .env | tr -d ' "\r\n')
 
-          # 2. Check if Extraction worked
+          # 2. Check if Empty
           if [ -z "$URL" ]; then
-             echo "::error::❌ Extraction failed. grep found nothing."
-             exit 1
+            echo "::error::❌ AWK extraction returned empty! Check .env format above."
+            exit 1
           fi
 
-          # 3. Masking (CRITICAL: Do this AFTER extraction)
-          echo "::add-mask::$URL"
-          echo "::add-mask::$ANON"
-
-          # 4. Output to GitHub
+          # 3. Write to GitHub Output
           echo "sb_url=$URL" >> $GITHUB_OUTPUT
           echo "sb_anon=$ANON" >> $GITHUB_OUTPUT
+
+          # 4. CRITICAL DEBUG: Prove it was written
+          echo "🔍 DEBUG: verifying GITHUB_OUTPUT file content..."
+          cat $GITHUB_OUTPUT
+
+          # 5. Mask Secrets (Do this LAST so we can see the file structure above)
+          echo "::add-mask::$URL"
+          echo "::add-mask::$ANON"
           
-          echo "✅ KEYS EXTRACTED:"
-          echo "URL length: ${#URL}"
-          echo "Anon length: ${#ANON}"
+          echo "✅ Extraction Complete. URL Length: ${#URL}"
 
   # ====================================================
   # JOB 2: DEPLOY TO TESTING (Green Env)
