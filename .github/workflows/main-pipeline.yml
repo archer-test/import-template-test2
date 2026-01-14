@@ -55,17 +55,13 @@ jobs:
           # 1. Verify file existence
           if [ ! -f .env ]; then
             echo "::error::❌ CRITICAL: .env file NOT found in the root directory!"
-            echo "Did the deploy script save it to 'scripts/.env' or 'setup/.env' instead?"
             exit 1
           fi
 
-          # 2. Verify content exists (without leaking secrets)
-          echo "🔍 DEBUG: Checking file content for keys..."
-          if grep -q "NEXT_PUBLIC_SUPABASE_URL" .env; then
-            echo "✅ Found NEXT_PUBLIC_SUPABASE_URL in .env"
-          else
+          # 2. Verify content exists
+          if ! grep -q "NEXT_PUBLIC_SUPABASE_URL" .env; then
             echo "::error::❌ .env exists but does NOT contain NEXT_PUBLIC_SUPABASE_URL"
-            cat .env # Be careful, this might print secrets if not masked, but we need to see why it failed
+            cat .env
             exit 1
           fi
 
@@ -74,18 +70,24 @@ jobs:
           source .env
           set +a
 
-          # 4. Verify variables are loaded
-          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
-             echo "::error::❌ Variable was found in file but loaded as EMPTY. Check for syntax errors in .env"
+          # 4. SANITIZATION (The Fix)
+          # Remove invisible carriage returns (\r) which break GitHub Outputs
+          CLEAN_URL=$(echo "$NEXT_PUBLIC_SUPABASE_URL" | tr -d '\r')
+          CLEAN_ANON=$(echo "$NEXT_PUBLIC_SUPABASE_ANON_KEY" | tr -d '\r')
+
+          # 5. Verify variables are loaded
+          if [ -z "$CLEAN_URL" ]; then
+             echo "::error::❌ Variable loaded as EMPTY."
              exit 1
           fi
 
-          # 5. Mask and Output
-          echo "::add-mask::$NEXT_PUBLIC_SUPABASE_URL"
-          echo "::add-mask::$NEXT_PUBLIC_SUPABASE_ANON_KEY"
+          # 6. Mask and Output
+          echo "::add-mask::$CLEAN_URL"
+          echo "::add-mask::$CLEAN_ANON"
           
-          echo "sb_url=$NEXT_PUBLIC_SUPABASE_URL" >> $GITHUB_OUTPUT
-          echo "sb_anon=$NEXT_PUBLIC_SUPABASE_ANON_KEY" >> $GITHUB_OUTPUT
+          # Use the CLEAN variables here
+          echo "sb_url=$CLEAN_URL" >> $GITHUB_OUTPUT
+          echo "sb_anon=$CLEAN_ANON" >> $GITHUB_OUTPUT
           
           echo "✅ SUCCESS: Keys extracted and pushed to outputs."
 
