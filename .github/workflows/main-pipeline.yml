@@ -335,7 +335,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Create Rollback Tag
+      # 1. NEW: Download the keys (Critical for the build)
+      - name: Download Env Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: supabase-env
+          path: .
+
+      # 2. Create Rollback Tag (Unchanged)
       - name: Create Backup Tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -343,20 +350,52 @@ jobs:
           TAG="prod-backup-$(date +'%Y-%m-%d-%H%M')"
           gh release create "$TAG" --generate-notes --title "Prod Deployment $TAG"
 
-      # 2. Promote Vercel
+      # 3. Promote Vercel (FIXED: Injection + Build)
       - name: Promote Vercel
         if: ${{ needs.provision-stack.outputs.fe_provider == 'vercel' }}
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.PROJECT_ID }}
+          PROJECT_NAME: ${{ needs.provision-stack.outputs.project_name }}
         run: |
+          # A. Install CLI
           npm install --global vercel@latest
+
+          # B. Link & Pull (Creates the priority file with empty keys)
+          vercel link --yes --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --project=$PROJECT_NAME
           vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+
+          # C. INJECT KEYS (The Fix)
+          echo "🧹 Cleaning and injecting keys into Production..."
+          
+          # Clean invisible characters
+          tr -d '\r' < .env > .env.clean
+          KEYS=$(cat .env.clean)
+          
+          # Inject into Vercel's production config file (This overrides Vercel's empty defaults)
+          echo "" >> .vercel/.env.production.local
+          echo "$KEYS" >> .vercel/.env.production.local
+
+          # Load keys into shell for the sync step below
+          set -a
+          . ./.env.clean
+          set +a
+
+          # D. Sync Keys to Cloud (Production Environment)
+          # We update the cloud vars so API routes work for users
+          vercel env rm NEXT_PUBLIC_SUPABASE_URL production --token=$VERCEL_TOKEN --yes || true
+          printf "%s\nn\n" "$NEXT_PUBLIC_SUPABASE_URL" | vercel env add NEXT_PUBLIC_SUPABASE_URL production --token=$VERCEL_TOKEN
+
+          vercel env rm NEXT_PUBLIC_SUPABASE_ANON_KEY production --token=$VERCEL_TOKEN --yes || true
+          printf "%s\nn\n" "$NEXT_PUBLIC_SUPABASE_ANON_KEY" | vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY production --token=$VERCEL_TOKEN
+
+          # E. Build & Deploy
+          # Now that keys are injected, this build will succeed
           vercel build --prod --token=$VERCEL_TOKEN
           vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
 
-      # 3. Promote Azure
+      # 4. Promote Azure (Unchanged)
       - name: Promote Azure (Slot Swap)
         if: ${{ needs.provision-stack.outputs.fe_provider == 'azure' }}
         uses: azure/login@v1
