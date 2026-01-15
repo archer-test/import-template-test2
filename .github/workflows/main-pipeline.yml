@@ -79,6 +79,9 @@ jobs:
     name: Deploy to Testing
     needs: provision-stack
     runs-on: ubuntu-latest
+    outputs:
+      preview_url: ${{ steps.vercel-deploy.outputs.preview_url}}
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -143,6 +146,7 @@ jobs:
 
       # 4. Sync, Build & Deploy
       - name: Vercel Build & Deploy
+        id: vercel-deploy
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           SB_URL: ${{ steps.inject-keys.outputs.sb_url }}
@@ -233,18 +237,46 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.57.0-jammy
     
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Deps
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
         run: npm ci
+
+      # 1. NEW: Download the keys (Restores the missing variables for tests)
+      - name: Download Env Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: supabase-env
+          path: .
+
+      # 2. Load keys so they are available in the 'env' block below
+      - name: Load Dotenv
+        id: load-env
+        run: |
+          # Create a clean version (strip \r) just to be safe
+          tr -d '\r' < .env > .env.clean
+          set -a
+          source .env.clean
+          set +a
+          echo "sb_url=$NEXT_PUBLIC_SUPABASE_URL" >> $GITHUB_OUTPUT
+          echo "sb_anon=$NEXT_PUBLIC_SUPABASE_ANON_KEY" >> $GITHUB_OUTPUT
 
       - name: Run Playwright
         env:
-          # The dynamic URL from Job 2
+          # --- THE FIX FOR "CONNECTION REFUSED" ---
+          # This forces Playwright to ignore 'localhost:3000' and use the live site
+          PLAYWRIGHT_TEST_BASE_URL: ${{ needs.deploy-testing.outputs.preview_url }}
+          
+          # For compatibility, in case your config reads this specifically
           BASE_URL: ${{ needs.deploy-testing.outputs.preview_url }}
+          
           HOME: /root
-          # The keys from Job 1 (if tests need to hit DB directly)
-          NEXT_PUBLIC_SUPABASE_URL: ${{ needs.provision-stack.outputs.sb_url }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ needs.provision-stack.outputs.sb_anon }}
+          
+          # --- THE FIX FOR MISSING KEYS ---
+          # We now pull these from the step above, not the 'needs' block
+          NEXT_PUBLIC_SUPABASE_URL: ${{ steps.load-env.outputs.sb_url }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ steps.load-env.outputs.sb_anon }}
         run: npx playwright test
 
       - name: Upload Test Report
