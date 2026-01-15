@@ -257,7 +257,7 @@ jobs:
           # Create a clean version (strip \r) just to be safe
           tr -d '\r' < .env > .env.clean
           set -a
-          source .env.clean
+          . ./.env.clean
           set +a
           echo "sb_url=$NEXT_PUBLIC_SUPABASE_URL" >> $GITHUB_OUTPUT
           echo "sb_anon=$NEXT_PUBLIC_SUPABASE_ANON_KEY" >> $GITHUB_OUTPUT
